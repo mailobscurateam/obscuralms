@@ -1,50 +1,92 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  LayoutDashboard, 
   BookOpen, 
-  Users, 
-  Plus, 
+  PlayCircle, 
+  FileText, 
   LogOut, 
-  Trash2, 
-  Loader2
+  Home, 
+  Smartphone,
+  Loader2,
+  ShieldCheck
 } from 'lucide-react';
 
-// --- CONFIGURATION ---
-// These match your Supabase setup
+// --- SUPABASE INITIALIZATION ---
+// We use the UMD build for compatibility with the preview environment's module system
 const supabaseUrl = 'https://qqkbsjrwgcafxjxwgbct.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxa2JzanJ3Z2NhZnhqeHdnYmN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY1NTMxOTcsImV4cCI6MjA3MjEyOTE5N30.XfWAPBgTbT12TIFf_wsdOPkt6cLQE-SsEYYXc8fuXxY';
 
 let supabaseClient = null;
 
-// --- COMPONENTS ---
-const Skeleton = () => (
-  <div className="animate-pulse flex space-x-4 p-4">
-    <div className="rounded-full bg-slate-200 h-10 w-10"></div>
-    <div className="flex-1 space-y-6 py-1">
-      <div className="h-2 bg-slate-200 rounded"></div>
-      <div className="space-y-3">
-        <div className="grid grid-cols-3 gap-4">
-          <div className="h-2 bg-slate-200 rounded col-span-2"></div>
-          <div className="h-2 bg-slate-200 rounded col-span-1"></div>
-        </div>
-        <div className="h-2 bg-slate-200 rounded"></div>
+// --- WATERMARK COMPONENT ---
+const Watermark = ({ phone }) => {
+  const [pos, setPos] = useState({ top: '20%', left: '20%' });
+
+  useEffect(() => {
+    const move = () => {
+      setPos({ 
+        top: `${Math.floor(Math.random() * 70) + 10}%`, 
+        left: `${Math.floor(Math.random() * 70) + 10}%` 
+      });
+    };
+    const interval = setInterval(move, 12000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div 
+      className="fixed z-[9999] pointer-events-none text-white/30 font-black text-sm select-none mix-blend-difference transition-all duration-1000"
+      style={{ top: pos.top, left: pos.left }}
+    >
+      <div className="flex items-center gap-1 bg-black/10 px-2 py-1 rounded tracking-widest uppercase">
+        <Smartphone size={12} /> {phone}
       </div>
     </div>
-  </div>
-);
+  );
+};
 
-// --- MAIN ADMIN APP ---
+// --- VIDEO PLAYER COMPONENT ---
+const SecureVideoPlayer = ({ videoId, phone }) => {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const prevent = (e) => e.preventDefault();
+    document.addEventListener('contextmenu', prevent);
+    return () => document.removeEventListener('contextmenu', prevent);
+  }, []);
+
+  return (
+    <div className="relative aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-800">
+      {loading && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-slate-900 z-10">
+          <Loader2 className="animate-spin mb-2" />
+          <p className="text-xs font-bold uppercase tracking-widest opacity-50">Encrypting Stream...</p>
+        </div>
+      )}
+      <iframe
+        className="w-full h-full"
+        src={`https://www.youtube.com/embed/${videoId}?modestbranding=1&rel=0&showinfo=0`}
+        frameBorder="0"
+        allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+        onLoad={() => setLoading(false)}
+      ></iframe>
+      <Watermark phone={phone} />
+    </div>
+  );
+};
+
+// --- MAIN STUDENT APP ---
 export default function App() {
   const [user, setUser] = useState(null);
+  const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('browse');
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [selectedLesson, setSelectedLesson] = useState(null);
   const [authMode, setAuthMode] = useState('login');
   const [error, setError] = useState('');
-  const [sdkReady, setSdkReady] = useState(false);
-  
   const [courses, setCourses] = useState([]);
-  const [students, setStudents] = useState([]);
-  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [sdkReady, setSdkReady] = useState(false);
 
   // Initialize Supabase via script tag for environment compatibility
   useEffect(() => {
@@ -67,42 +109,48 @@ export default function App() {
     // Check active session
     supabaseClient.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
+      if (session?.user) fetchUserData(session.user.id);
       setLoading(false);
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabaseClient.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      if (session?.user) fetchUserData(session.user.id);
       setLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, [sdkReady]);
 
-  // Data Fetching
+  const fetchUserData = async (userId) => {
+    if (!supabaseClient) return;
+    const { data, error } = await supabaseClient
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    
+    if (data) setUserData(data);
+  };
+
   useEffect(() => {
     if (!user || !supabaseClient) return;
-
-    const fetchData = async () => {
-      // Fetch Courses
-      const { data: courseData } = await supabaseClient.from('courses').select('*');
-      if (courseData) setCourses(courseData);
-
-      // Fetch Students
-      const { data: profileData } = await supabaseClient
-        .from('profiles')
-        .select('*')
-        .eq('role', 'student');
-      if (profileData) setStudents(profileData);
+    
+    const fetchCourses = async () => {
+      const { data, error } = await supabaseClient
+        .from('courses')
+        .select('*');
+      
+      if (data) setCourses(data);
     };
 
-    fetchData();
+    fetchCourses();
 
-    // Subscribe to realtime changes
+    // Realtime subscription for course updates
     const channel = supabaseClient
-      .channel('admin-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'courses' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, fetchData)
+      .channel('schema-db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'courses' }, fetchCourses)
       .subscribe();
 
     return () => supabaseClient.removeChannel(channel);
@@ -112,110 +160,86 @@ export default function App() {
     e.preventDefault();
     if (!supabaseClient) return;
     setError('');
-    const email = e.target.email.value;
-    const password = e.target.password.value;
+    const fd = new FormData(e.target);
+    const email = fd.get('email');
+    const password = fd.get('password');
 
     try {
       if (authMode === 'register') {
-        const { data, error: signUpError } = await supabaseClient.auth.signUp({ email, password });
+        const { data, error: signUpError } = await supabaseClient.auth.signUp({
+          email,
+          password,
+        });
+
         if (signUpError) throw signUpError;
-        
+
         if (data.user) {
-          await supabaseClient.from('profiles').insert({
-            id: data.user.id,
-            email,
-            role: 'admin'
-          });
+          const { error: profileError } = await supabaseClient
+            .from('profiles')
+            .insert({
+              id: data.user.id,
+              full_name: fd.get('fullName'),
+              phone: fd.get('phone'),
+              email: email,
+              role: 'student'
+            });
+          
+          if (profileError) throw profileError;
         }
       } else {
-        const { data, error: signInError } = await supabaseClient.auth.signInWithPassword({ email, password });
+        const { error: signInError } = await supabaseClient.auth.signInWithPassword({
+          email,
+          password,
+        });
         if (signInError) throw signInError;
-
-        // Check if admin
-        const { data: profile } = await supabaseClient
-          .from('profiles')
-          .select('role')
-          .eq('id', data.user.id)
-          .single();
-          
-        if (!profile || profile.role !== 'admin') {
-          await supabaseClient.auth.signOut();
-          throw new Error("Access denied. Admin role required.");
-        }
       }
-    } catch (err) {
-      setError(err.message);
+    } catch (err) { 
+      setError(err.message); 
     }
   };
 
-  const addCourse = async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const newCourse = {
-      title: formData.get('title'),
-      description: formData.get('description'),
-      price: parseFloat(formData.get('price') || '0'),
-      thumbnail: formData.get('thumbnail') || 'https://images.unsplash.com/photo-1636466497217-26a8cbeaf0aa?auto=format&fit=crop&w=800',
-      lessons: []
-    };
-    
-    await supabaseClient.from('courses').insert(newCourse);
-    setActiveTab('courses');
-  };
-
-  const addLesson = async (courseId, e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const lesson = {
-      id: crypto.randomUUID(),
-      title: formData.get('title'),
-      type: formData.get('type'),
-      content: formData.get('content'),
-      created_at: new Date().toISOString()
-    };
-    
-    const course = courses.find(c => c.id === courseId);
-    const updatedLessons = [...(course.lessons || []), lesson];
-    
-    await supabaseClient
-      .from('courses')
-      .update({ lessons: updatedLessons })
-      .eq('id', courseId);
-      
-    setSelectedCourse(prev => ({ ...prev, lessons: updatedLessons }));
-    e.target.reset();
-  };
-
-  const deleteCourse = async (id) => {
-    if (window.confirm("Delete this course permanently?")) {
-      await supabaseClient.from('courses').delete().eq('id', id);
+  const handleSignOut = async () => {
+    if (supabaseClient) {
+      await supabaseClient.auth.signOut();
+      setUser(null);
+      setUserData(null);
     }
   };
 
-  if (!sdkReady || loading) return <div className="h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-blue-600" size={40} /></div>;
+  const getYTId = (url) => {
+    const match = url?.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
+    return (match && match[2].length === 11) ? match[2] : null;
+  };
+
+  if (!sdkReady || loading) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-slate-50">
+        <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
+        <p className="text-slate-500 font-medium animate-pulse text-sm uppercase tracking-widest">Initializing Core Sdk...</p>
+      </div>
+    );
+  }
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
-          <div className="p-8 text-center bg-blue-600 text-white">
-            <h1 className="text-3xl font-bold italic tracking-tighter">PHYSICS ADMIN</h1>
-          </div>
-          <form onSubmit={handleAuth} className="p-8 space-y-4">
-            {error && <div className="p-3 bg-red-100 text-red-700 rounded-lg text-sm">{error}</div>}
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Email</label>
-              <input name="email" type="email" required className="mt-1 w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Password</label>
-              <input name="password" type="password" required className="mt-1 w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg">
-              {authMode === 'login' ? 'Login' : 'Register'}
+      <div className="min-h-screen flex items-center justify-center bg-blue-600 p-4">
+        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8">
+          <h1 className="text-3xl font-black text-center mb-8 italic tracking-tighter">PHYSICS LMS</h1>
+          <form onSubmit={handleAuth} className="space-y-4">
+            {error && <div className="p-3 bg-red-50 text-red-600 rounded-xl text-xs font-bold">{error}</div>}
+            {authMode === 'register' && (
+              <>
+                <input name="fullName" placeholder="Full Name" required className="w-full p-3 bg-slate-50 border rounded-xl" />
+                <input name="phone" placeholder="Phone (07XXXXXXXX)" required className="w-full p-3 bg-slate-50 border rounded-xl" />
+              </>
+            )}
+            <input name="email" type="email" placeholder="Email" required className="w-full p-3 bg-slate-50 border rounded-xl" />
+            <input name="password" type="password" placeholder="Password" required className="w-full p-3 bg-slate-50 border rounded-xl" />
+            <button className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl">
+              {authMode === 'login' ? 'Sign In' : 'Create Account'}
             </button>
-            <button type="button" onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')} className="w-full text-slate-500 text-sm hover:underline">
-              {authMode === 'login' ? "Need account? Register" : "Have account? Login"}
+            <button type="button" onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')} className="w-full text-sm text-slate-500 hover:underline">
+              {authMode === 'login' ? 'Need account? Register' : 'Have account? Login'}
             </button>
           </form>
         </div>
@@ -224,136 +248,80 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col fixed h-full lg:static z-40">
-        <div className="p-6 text-white border-b border-slate-800 flex items-center gap-3">
-          <BookOpen className="text-blue-500" />
-          <span className="font-bold text-xl">LMS Admin</span>
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+      <header className="bg-white border-b px-6 py-4 flex items-center justify-between sticky top-0 z-40">
+        <div className="flex items-center gap-2">
+          <BookOpen className="text-blue-600" />
+          <span className="font-black text-lg">Quantum LMS</span>
         </div>
-        <nav className="flex-1 p-4 space-y-2">
-          <button onClick={() => { setActiveTab('dashboard'); setSelectedCourse(null); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}>
-            <LayoutDashboard size={20} /> Dashboard
-          </button>
-          <button onClick={() => { setActiveTab('courses'); setSelectedCourse(null); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${activeTab === 'courses' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}>
-            <BookOpen size={20} /> Courses
-          </button>
-          <button onClick={() => { setActiveTab('students'); setSelectedCourse(null); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${activeTab === 'students' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}>
-            <Users size={20} /> Students
-          </button>
-        </nav>
-        <div className="p-4 border-t border-slate-800">
-          <button onClick={() => supabaseClient.auth.signOut()} className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-xl">
-            <LogOut size={20} /> Logout
-          </button>
-        </div>
-      </aside>
+        <button onClick={handleSignOut} className="text-slate-400 hover:text-red-500 transition-colors">
+          <LogOut size={20} />
+        </button>
+      </header>
 
-      <main className="flex-1 overflow-y-auto p-8">
-        {activeTab === 'dashboard' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white p-6 rounded-2xl border shadow-sm">
-              <p className="text-slate-500 text-sm">Courses</p>
-              <h3 className="text-3xl font-bold">{courses.length}</h3>
-            </div>
-            <div className="bg-white p-6 rounded-2xl border shadow-sm">
-              <p className="text-slate-500 text-sm">Students</p>
-              <h3 className="text-3xl font-bold">{students.length}</h3>
-            </div>
-          </div>
-        )}
+      <div className="flex-1 flex overflow-hidden">
+        <aside className="hidden md:flex w-20 bg-white border-r flex-col items-center py-8 space-y-6">
+          <button onClick={() => { setActiveTab('browse'); setSelectedCourse(null); }} className={`p-3 rounded-2xl ${activeTab === 'browse' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400'}`}>
+            <Home size={24} />
+          </button>
+        </aside>
 
-        {activeTab === 'courses' && !selectedCourse && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold">Course Management</h2>
-              <button onClick={() => setActiveTab('add_course')} className="bg-blue-600 text-white px-5 py-2 rounded-xl flex items-center gap-2 font-bold">
-                <Plus size={20} /> New Course
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <main className="flex-1 overflow-y-auto p-6 lg:p-10">
+          {!selectedCourse ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {courses.map(course => (
-                <div key={course.id} className="bg-white rounded-2xl overflow-hidden border shadow-sm">
-                  <img src={course.thumbnail} className="w-full h-40 object-cover" alt="" />
-                  <div className="p-5">
-                    <h3 className="font-bold text-lg">{course.title}</h3>
-                    <div className="mt-4 flex justify-between items-center">
-                      <button onClick={() => setSelectedCourse(course)} className="text-blue-600 font-bold text-sm">Manage Lessons</button>
-                      <button onClick={() => deleteCourse(course.id)} className="text-red-500"><Trash2 size={16} /></button>
-                    </div>
+                <div key={course.id} onClick={() => setSelectedCourse(course)} className="bg-white rounded-3xl overflow-hidden border shadow-sm hover:shadow-xl cursor-pointer">
+                  <img src={course.thumbnail} className="w-full h-48 object-cover" />
+                  <div className="p-6">
+                    <h4 className="font-bold text-lg">{course.title}</h4>
+                    <p className="text-slate-500 text-sm mt-2 line-clamp-2">{course.description}</p>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {activeTab === 'add_course' && (
-          <div className="max-w-xl bg-white p-8 rounded-2xl border shadow-sm">
-            <h3 className="text-xl font-bold mb-6">Create Course</h3>
-            <form onSubmit={addCourse} className="space-y-4">
-              <input name="title" placeholder="Title" required className="w-full p-3 border rounded-xl" />
-              <input name="price" placeholder="Price" type="number" required className="w-full p-3 border rounded-xl" />
-              <input name="thumbnail" placeholder="Thumbnail URL" className="w-full p-3 border rounded-xl" />
-              <textarea name="description" placeholder="Description" className="w-full p-3 border rounded-xl"></textarea>
-              <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl">Create</button>
-            </form>
-          </div>
-        )}
-
-        {selectedCourse && (
-          <div className="space-y-6">
-            <button onClick={() => setSelectedCourse(null)} className="text-blue-600 font-bold">&larr; Back</button>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="bg-white p-6 rounded-2xl border shadow-sm">
-                <h4 className="font-bold mb-4">Lessons</h4>
-                {selectedCourse.lessons?.map((l, i) => (
-                  <div key={l.id} className="p-3 border-b flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-slate-400">{i+1}</span>
-                      <p className="font-medium">{l.title}</p>
+          ) : (
+            <div className="max-w-6xl mx-auto space-y-6">
+              <button onClick={() => { setSelectedCourse(null); setSelectedLesson(null); }} className="text-slate-500 font-bold">&larr; Dashboard</button>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <div className="lg:col-span-8">
+                  {selectedLesson ? (
+                    <div className="space-y-6">
+                      <div className="bg-white p-4 rounded-2xl border shadow-sm flex items-center justify-between">
+                        <h2 className="font-bold">{selectedLesson.title}</h2>
+                        <div className="flex items-center gap-2 text-green-500 text-xs font-bold uppercase"><ShieldCheck size={16}/> Secure</div>
+                      </div>
+                      {selectedLesson.type === 'video' && <SecureVideoPlayer videoId={getYTId(selectedLesson.content)} phone={userData?.phone || 'PRIVATE'} />}
+                      {selectedLesson.type === 'pdf' && (
+                        <div className="bg-slate-200 aspect-[1/1.4] rounded-2xl flex flex-col items-center justify-center p-10 relative overflow-hidden">
+                          <FileText size={48} className="mb-4 text-slate-400" />
+                          <a href={selectedLesson.content} target="_blank" rel="noopener noreferrer" className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold">View Document</a>
+                          <Watermark phone={userData?.phone || 'PRIVATE'} />
+                        </div>
+                      )}
                     </div>
+                  ) : (
+                    <div className="bg-white p-12 rounded-3xl text-center border">
+                      <h2 className="text-3xl font-black">{selectedCourse.title}</h2>
+                      <p className="mt-4 text-slate-500">{selectedCourse.description}</p>
+                    </div>
+                  )}
+                </div>
+                <div className="lg:col-span-4 bg-white rounded-3xl border h-fit">
+                  <div className="p-6 border-b font-bold">Curriculum</div>
+                  <div className="p-2 space-y-1">
+                    {selectedCourse.lessons?.map((l, i) => (
+                      <button key={l.id || i} onClick={() => setSelectedLesson(l)} className={`w-full text-left p-4 rounded-2xl flex items-center gap-4 ${selectedLesson?.id === l.id ? 'bg-blue-600 text-white' : 'hover:bg-slate-50'}`}>
+                        <div className="shrink-0">{l.type === 'video' ? <PlayCircle size={18}/> : <FileText size={18}/>}</div>
+                        <div className="text-sm font-bold truncate">{l.title}</div>
+                      </button>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <div className="bg-white p-6 rounded-2xl border shadow-sm">
-                <h4 className="font-bold mb-4">Add Lesson</h4>
-                <form onSubmit={(e) => addLesson(selectedCourse.id, e)} className="space-y-4">
-                  <input name="title" placeholder="Lesson Title" required className="w-full p-3 border rounded-xl" />
-                  <select name="type" className="w-full p-3 border rounded-xl">
-                    <option value="video">Video</option>
-                    <option value="pdf">PDF</option>
-                  </select>
-                  <input name="content" placeholder="URL/Link" required className="w-full p-3 border rounded-xl" />
-                  <button type="submit" className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl">Add</button>
-                </form>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-
-        {activeTab === 'students' && (
-          <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
-            <table className="w-full text-left">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-6 py-4">Name</th>
-                  <th className="px-6 py-4">Phone</th>
-                  <th className="px-6 py-4">Email</th>
-                </tr>
-              </thead>
-              <tbody>
-                {students.map(s => (
-                  <tr key={s.id} className="border-t">
-                    <td className="px-6 py-4">{s.full_name}</td>
-                    <td className="px-6 py-4">{s.phone}</td>
-                    <td className="px-6 py-4">{s.email}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </main>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
