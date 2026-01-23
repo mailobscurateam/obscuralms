@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Play, 
   FileText, 
   Info, 
   X, 
-  Clock, 
   ChevronRight, 
   ShieldAlert,
   Loader2,
@@ -12,8 +11,17 @@ import {
 } from 'lucide-react';
 
 // --- CONFIGURATION ---
-const SPREADSHEET_ID = '1fpcKuMYWPLjZO0LKDkNf-HS0UwGiY2KAW7GWj_bI9DY';
-const API_KEY = 'AIzaSyDzdiDMtiY250DS-lDuZeIZOocw9oqMlhM';
+// Safely handle process.env for browser environments to prevent "ReferenceError: process is not defined"
+const getEnv = (key, fallback) => {
+  try {
+    return (typeof process !== 'undefined' && process.env && process.env[key]) || fallback;
+  } catch (e) {
+    return fallback;
+  }
+};
+
+const SPREADSHEET_ID = getEnv('REACT_APP_SPREADSHEET_ID', '1fpcKuMYWPLjZO0LKDkNf-HS0UwGiY2KAW7GWj_bI9DY');
+const API_KEY = getEnv('REACT_APP_API_KEY', 'AIzaSyDzdiDMtiY250DS-lDuZeIZOocw9oqMlhM');
 const RANGE = 'Lessons!A2:F100';
 
 const App = () => {
@@ -48,16 +56,16 @@ const App = () => {
 
     try {
       const response = await fetch(sheetsUrl);
-      if (!response.ok) throw new Error("API call failed");
+      if (!response.ok) throw new Error("API call failed - Check your Vercel Environment Variables");
       const data = await response.json();
 
       if (data.values && data.values.length > 0) {
         processData(data.values);
       } else {
-        throw new Error("No data found");
+        throw new Error("No data found in the specified range");
       }
     } catch (err) {
-      setError("Cloud sync unavailable. Loading local archives.");
+      setError("Cloud sync unavailable. Connection to Google Sheets failed.");
       showDemoData();
     } finally {
       setLoading(false);
@@ -87,12 +95,10 @@ const App = () => {
   };
 
   const showDemoData = () => {
+    // Fallback data for testing in Vercel preview environments
     const demoRows = [
       ["Cybersecurity Essentials", "Network Security", "Firewall Fundamentals", "", "https://www.youtube.com/embed/dQw4w9WgXcQ", "Video"],
-      ["Cybersecurity Essentials", "Network Security", "Security Protocols", "", "https://www.youtube.com/embed/jNQXAC9IVRw", "Video"],
-      ["Cybersecurity Essentials", "Network Security", "Lab Guide", "", "https://example.com/guide.pdf", "PDF"],
-      ["Advanced Frontend", "React Architecture", "Fiber Engine Deep Dive", "", "https://www.youtube.com/embed/7YhdqIR2Yzo", "Video"],
-      ["Advanced Frontend", "React Architecture", "Performance Hooks", "", "#", "Video"]
+      ["Advanced Frontend", "React Architecture", "Fiber Engine Deep Dive", "", "https://www.youtube.com/embed/7YhdqIR2Yzo", "Video"]
     ];
     processData(demoRows);
   };
@@ -121,7 +127,7 @@ const App = () => {
             </div>
             <div className="text-sm">
               <p className="text-slate-300 font-bold uppercase text-[10px] tracking-widest">System Status</p>
-              <p className="text-green-500 font-mono text-[11px]">ENCRYPTED_SESSION_ACTIVE</p>
+              <p className="text-green-500 font-mono text-[11px]">HYBRID_ENV_ACTIVE</p>
             </div>
           </div>
         </header>
@@ -163,7 +169,7 @@ const App = () => {
                     {course.name}
                   </h3>
                   <p className="text-slate-400 text-sm leading-relaxed opacity-70">
-                    High-level directive covering {course.name} with proprietary modules and research documentation.
+                    Proprietary modules and research documentation for {course.name}.
                   </p>
                 </div>
 
@@ -215,7 +221,7 @@ const App = () => {
                         <button
                           key={pIdx}
                           onClick={() => {
-                            if (isPdf) window.open(item.link, '_blank');
+                            if (isPdf) window.open(item.link, '_blank', 'noopener,noreferrer');
                             else setActiveVideo(item);
                           }}
                           className={`group flex items-center justify-between p-5 rounded-2xl border transition-all text-left ${
@@ -228,7 +234,7 @@ const App = () => {
                             <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
                               isPdf ? 'bg-purple-500/10 text-purple-400' : 'bg-indigo-500/10 text-indigo-400'
                             }`}>
-                              {isPdf ? <FileText size={20} /> : <Play size={20} fill="currentColor" className="ml-1" />}
+                              {isPdf ? <FileText size={20} /> : <Play size={20} fill="currentColor" />}
                             </div>
                             <div>
                               <p className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors">{item.part}</p>
@@ -247,36 +253,34 @@ const App = () => {
         </div>
       )}
 
-      {/* Video Player Modal (Using Iframe Method) */}
+      {/* Video Player Modal */}
       {activeVideo && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95 backdrop-blur-xl animate-in fade-in duration-300">
-          <div className="w-full max-w-6xl aspect-video relative group">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95 backdrop-blur-xl">
+          <div className="w-full max-w-6xl aspect-video relative group px-4">
             
-            {/* Player UI Header */}
-            <div className="absolute top-0 left-0 right-0 p-8 flex justify-between items-start z-20 bg-gradient-to-b from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none">
-              <div className="pointer-events-auto">
+            <div className="absolute top-[-60px] left-0 right-0 flex justify-between items-center px-4">
+              <div>
                 <p className="text-indigo-400 text-[10px] font-black uppercase tracking-[0.4em] mb-1">Secure Stream Active</p>
                 <h2 className="text-xl font-bold text-white">{activeVideo.part}</h2>
               </div>
               <button 
                 onClick={() => setActiveVideo(null)}
-                className="p-3 bg-white/10 hover:bg-red-500/40 rounded-full text-white transition-all backdrop-blur-md pointer-events-auto"
+                className="p-3 bg-white/10 hover:bg-red-500/40 rounded-full text-white transition-all backdrop-blur-md border border-white/5"
               >
                 <X size={24} />
               </button>
             </div>
 
-            {/* Video Content Container */}
             <div className="w-full h-full bg-slate-900 rounded-3xl overflow-hidden shadow-[0_0_100px_rgba(79,70,229,0.15)] border border-white/10 relative">
               
               {/* Movable Watermark */}
               <div 
-                className="absolute z-10 pointer-events-none transition-all duration-1000 ease-in-out opacity-20 select-none"
+                className="absolute z-10 pointer-events-none transition-all duration-1000 ease-in-out opacity-20 select-none whitespace-nowrap"
                 style={{ top: watermarkPos.top, left: watermarkPos.left }}
               >
                 <div className="flex flex-col items-center">
-                  <p className="text-white font-mono text-xs tracking-widest uppercase">Obscura Security Asset</p>
-                  <p className="text-indigo-400 font-mono text-[10px] uppercase">ID: {Math.random().toString(36).substr(2, 9)}</p>
+                  <p className="text-white font-mono text-[10px] tracking-widest uppercase">Obscura Security Asset</p>
+                  <p className="text-indigo-400 font-mono text-[8px] uppercase">VERCEL_NODE_ID: {Math.random().toString(36).substr(2, 9)}</p>
                 </div>
               </div>
 
@@ -290,16 +294,16 @@ const App = () => {
                 allowFullScreen
                 className="w-full h-full"
                 title={activeVideo.part}
+                loading="lazy"
               />
             </div>
 
-            {/* Video Metadata / Exit Prompt */}
-            <div className="mt-8 flex items-center justify-between px-4 opacity-40 hover:opacity-100 transition-opacity">
+            <div className="mt-6 flex items-center justify-between px-4 opacity-40">
                <div className="flex items-center gap-4 text-xs font-mono text-indigo-400 uppercase tracking-widest">
                   <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
                   Remote Decryption Successful
                </div>
-               <p className="text-[10px] text-slate-500 uppercase tracking-[0.2em]">Asset protection enabled • Static watermark active</p>
+               <p className="hidden md:block text-[10px] text-slate-500 uppercase tracking-[0.2em]">Asset protection enabled • Moving watermark active</p>
             </div>
           </div>
         </div>
